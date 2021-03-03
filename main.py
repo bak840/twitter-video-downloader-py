@@ -1,7 +1,12 @@
 import os
 import sys
 from dotenv import load_dotenv
+from pathlib import Path
 import requests
+
+
+def sort_bitrate(value):
+    return value['bitrate']
 
 
 class Downloader:
@@ -10,16 +15,33 @@ class Downloader:
         bearer_token = os.getenv('BEARER_TOKEN')
         self.headers = {"Authorization": "Bearer {}".format(bearer_token)}
 
-    def download_first_variant(self, tweet_url):
+    def download_biggest_variant(self, tweet_url):
+        videos = self.fetch_videos_infos(tweet_url)
+        video = sorted(videos, key=sort_bitrate, reverse=True)[0]
+        self.download_video(video, self.get_id(tweet_url))
+
+    def download_smallest_variant(self, tweet_url):
+        videos = self.fetch_videos_infos(tweet_url)
+        video = sorted(videos, key=sort_bitrate)[0]
+        self.download_video(video, self.get_id(tweet_url))
+
+    def download_video(self, video_info, tweet_id):
+        video_data = requests.get(video_info['url'], allow_redirects=True)
+        filename = '{}_{}x{}.mp4'.format(tweet_id, video_info['width'], video_info['height'])
+        download_path = self.get_download_path()
+        filepath = os.path.join(download_path, filename)
+        if not os.path.exists(filepath):
+            print('Downloading video of tweet {}'.format(tweet_id))
+            open(filepath, 'wb').write(video_data.content)
+            print('Saved at {}'.format(filepath))
+        else:
+            print('Video already downloaded at {}'.format(filepath))
+
+    def fetch_videos_infos(self, tweet_url):
         api_url = self.get_api_url(tweet_url)
         data = self.connect_to_endpoint(api_url)
         videos = self.get_videos_info(data)
-        print('Downloading video of tweet {}'.format(self.get_id(tweet_url)))
-        first_video = videos[0]
-        video_data = requests.get(first_video['url'], allow_redirects=True)
-        filename = '{}_{}x{}.mp4'.format(self.get_id(tweet_url), first_video['width'], first_video['height'])
-        open(filename, 'wb').write(video_data.content)
-        print('Saved at {}'.format(filename))
+        return videos
 
     def get_api_url(self, tweet_url):
         tweet_id = self.get_id(tweet_url)
@@ -50,8 +72,9 @@ class Downloader:
         video_url = raw_info['url']
         sizes = self.get_video_sizes(video_url)
         return {
-            'width': sizes[0],
-            'height': sizes[1],
+            'bitrate': raw_info['bitrate'],
+            'width': int(sizes[0]),
+            'height': int(sizes[1]),
             'url': video_url
         }
 
@@ -59,9 +82,12 @@ class Downloader:
         definition = video_url.split('/')[-2]
         return definition.split('x')
 
+    def get_download_path(self):
+        return os.getenv('DOWNLOAD_PATH') or os.path.join(Path.home(), 'Downloads')
+
 
 if __name__ == '__main__':
     print('Welcome to the Twitter Video Downloader')
     url = sys.argv[1]
     downloader = Downloader()
-    downloader.download_first_variant(url)
+    downloader.download_biggest_variant(url)
