@@ -7,24 +7,24 @@ import requests
 
 def download_biggest_variant(tweet_url):
     videos = fetch_videos_infos(tweet_url)
-    video = sorted(videos, key=sort_bitrate, reverse=True)[0]
+    video = sorted(videos, key=get_bitrate_from_video, reverse=True)[0]
     download_video(video, get_id(tweet_url))
 
 
 def download_smallest_variant(tweet_url):
     videos = fetch_videos_infos(tweet_url)
-    video = sorted(videos, key=sort_bitrate)[0]
+    video = sorted(videos, key=get_bitrate_from_video)[0]
     download_video(video, get_id(tweet_url))
 
 
-def sort_bitrate(value):
+def get_bitrate_from_video(value):
     return value['bitrate']
 
 
 def download_video(video_info, tweet_id):
     video_data = requests.get(video_info['url'], allow_redirects=True)
     filename = '{}_{}x{}.mp4'.format(tweet_id, video_info['width'], video_info['height'])
-    download_path = get_download_path()
+    download_path = os.getenv('DOWNLOAD_PATH') or os.path.join(Path.home(), 'Downloads')
     filepath = os.path.join(download_path, filename)
     if not os.path.exists(filepath):
         print('Downloading video of tweet {}'.format(tweet_id))
@@ -32,10 +32,6 @@ def download_video(video_info, tweet_id):
         print('Saved at {}'.format(filepath))
     else:
         print('Video already downloaded at {}'.format(filepath))
-
-
-def get_download_path():
-    return os.getenv('DOWNLOAD_PATH') or os.path.join(Path.home(), 'Downloads')
 
 
 def fetch_videos_infos(tweet_url):
@@ -69,13 +65,9 @@ def connect_to_endpoint(api_url):
 
 def get_videos_info(data):
     raw_info = data['extended_entities']['media'][0]['video_info']['variants']
-    raw_info = filter(is_variant_valid, raw_info)
+    raw_info = filter(lambda variant: variant['content_type'] == 'video/mp4', raw_info)
     info = list(map(extract_video_info, raw_info))
     return info
-
-
-def is_variant_valid(variant):
-    return variant['content_type'] == 'video/mp4'
 
 
 def extract_video_info(raw_info):
